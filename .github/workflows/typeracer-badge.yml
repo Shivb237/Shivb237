@@ -1,0 +1,60 @@
+name: Update TypeRacer badge
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch stats and build badge
+        env:
+          TYPERACER_USERNAME: shivangb237
+          TYPERACER_API_KEY: ${{ secrets.TYPERACER_API_KEY }}
+        run: |
+          TOKEN=$(printf '%s' "$TYPERACER_USERNAME:$TYPERACER_API_KEY" | base64 -w0)
+          RESPONSE=$(curl -sS -H "Authorization: Basic $TOKEN" \
+            "https://api.typeracer.com/v1/racers/$TYPERACER_USERNAME/stats")
+          echo "API response: $RESPONSE"
+          WPM=$(echo "$RESPONSE" | jq -r '(.data[0] // .data).avgWPM // (.data[0] // .data).averageWpm // (.data[0] // .data).speed')
+          if [ -z "$WPM" ] || [ "$WPM" = "null" ]; then
+            echo "Could not find a WPM field — see the raw response printed above and adjust the jq path."
+            exit 1
+          fi
+          cat > typeracer-badge.svg <<EOF
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="20" role="img" aria-label="typeracer: ${WPM} wpm">
+            <linearGradient id="s" x2="0" y2="100%">
+              <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+              <stop offset="1" stop-opacity=".1"/>
+            </linearGradient>
+            <clipPath id="r"><rect width="110" height="20" rx="3" fill="#fff"/></clipPath>
+            <g clip-path="url(#r)">
+              <rect width="62" height="20" fill="#555"/>
+              <rect x="62" width="48" height="20" fill="#4c1"/>
+              <rect width="110" height="20" fill="url(#s)"/>
+            </g>
+            <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,sans-serif" font-size="11">
+              <text x="31" y="14">typeracer</text>
+              <text x="86" y="14">${WPM} wpm</text>
+            </g>
+          </svg>
+          EOF
+
+      - name: Commit badge if changed
+        run: |
+          if git diff --quiet -- typeracer-badge.svg; then
+            echo "No change, skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add typeracer-badge.svg
+          git commit -m "Update TypeRacer badge"
+          git push
