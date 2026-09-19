@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch stats and build badge
+      - name: Fetch stats and build scorecard
         env:
           TYPERACER_USERNAME: shivangb237
           TYPERACER_API_KEY: ${{ secrets.TYPERACER_API_KEY }}
@@ -23,28 +23,45 @@ jobs:
           RESPONSE=$(curl -sS -H "Authorization: Basic $TOKEN" \
             "https://data.typeracer.com/api/v1/racers/$TYPERACER_USERNAME/stats")
           echo "API response: $RESPONSE"
-          RAW_WPM=$(echo "$RESPONSE" | jq -r '[.data[] | select(.universe=="play")][0].avg_wpm // .data[0].avg_wpm')
-          if [ -z "$RAW_WPM" ] || [ "$RAW_WPM" = "null" ]; then
+
+          PLAY=$(echo "$RESPONSE" | jq -c '[.data[] | select(.universe=="play")][0] // .data[0]')
+          AVG_RAW=$(echo "$PLAY" | jq -r '.avg_wpm')
+          BEST_RAW=$(echo "$PLAY" | jq -r '.best_wpm')
+          RACES=$(echo "$PLAY" | jq -r '.total_races')
+
+          if [ -z "$AVG_RAW" ] || [ "$AVG_RAW" = "null" ]; then
             echo "Could not find avg_wpm in the response above — check its shape and adjust the jq path."
             exit 1
           fi
-          WPM=$(printf "%.1f" "$RAW_WPM")
+
+          AVG_WPM=$(printf "%.1f" "$AVG_RAW")
+          BEST_WPM=$(printf "%.0f" "$BEST_RAW")
+
           cat > typeracer-badge.svg <<EOF
-          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="20" role="img" aria-label="typeracer: ${WPM} wpm">
-            <linearGradient id="s" x2="0" y2="100%">
-              <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-              <stop offset="1" stop-opacity=".1"/>
-            </linearGradient>
-            <clipPath id="r"><rect width="110" height="20" rx="3" fill="#fff"/></clipPath>
-            <g clip-path="url(#r)">
-              <rect width="62" height="20" fill="#555"/>
-              <rect x="62" width="48" height="20" fill="#4c1"/>
-              <rect width="110" height="20" fill="url(#s)"/>
-            </g>
-            <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,sans-serif" font-size="11">
-              <text x="31" y="14">typeracer</text>
-              <text x="86" y="14">${WPM} wpm</text>
-            </g>
+          <svg width="420" height="150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TypeRacer scorecard for ${TYPERACER_USERNAME}: ${AVG_WPM} wpm average, ${BEST_WPM} wpm best, ${RACES} races">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1b3a63"/>
+                <stop offset="1" stop-color="#0f2542"/>
+              </linearGradient>
+            </defs>
+            <rect width="420" height="150" rx="12" fill="url(#bg)"/>
+            <rect x="0.5" y="0.5" width="419" height="149" rx="11.5" fill="none" stroke="#2e5c8a" stroke-width="1"/>
+
+            <text x="20" y="30" font-family="Verdana, Geneva, sans-serif" font-size="15" font-weight="bold" fill="#ffffff">⌨ typeracer</text>
+            <text x="400" y="30" font-family="Verdana, Geneva, sans-serif" font-size="10" fill="#7fa8d0" text-anchor="end" letter-spacing="1">SCORECARD</text>
+            <line x1="20" y1="40" x2="400" y2="40" stroke="#2e5c8a" stroke-width="1"/>
+
+            <text x="20" y="78" font-family="Verdana, Geneva, sans-serif" font-size="11" fill="#8fb6da">Average Typing Speed</text>
+            <text x="20" y="118" font-family="Verdana, Geneva, sans-serif" font-size="42" font-weight="bold" fill="#ffffff">${AVG_WPM}<tspan font-size="16" fill="#8fb6da" dx="6">WPM</tspan></text>
+
+            <rect x="248" y="55" width="152" height="30" rx="6" fill="#2c6e6e"/>
+            <text x="324" y="75" font-family="Verdana, Geneva, sans-serif" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">${BEST_WPM} WPM Best</text>
+
+            <rect x="248" y="93" width="152" height="30" rx="6" fill="#2c6e6e"/>
+            <text x="324" y="113" font-family="Verdana, Geneva, sans-serif" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">${RACES} Races</text>
+
+            <text x="20" y="138" font-family="Verdana, Geneva, sans-serif" font-size="11" fill="#6f93b8">${TYPERACER_USERNAME} &#183; powered by typeracer.com</text>
           </svg>
           EOF
 
